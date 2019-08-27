@@ -1,5 +1,4 @@
-#define SIZE 100
-
+#include "Numbers.h"
 
 enum parser_state {
 	parsing_cmd,
@@ -16,10 +15,6 @@ enum cmd_state {
 	reading
 };
 
-// enum single_line_state {
-// 	r_found,
-// 	reading
-// }
 
 enum multi_line_state {
 	r1_found,

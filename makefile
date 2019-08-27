@@ -1,7 +1,12 @@
-all: messi tcputils addr die getaddr server
+all: utils messi tcputils addr die getaddr server
 
+mayus: mayus.c
+	gcc -o mayus mayus.c
 
-messi: messi.c
+utils: Utilities.c
+	gcc -o Utilities.o -c Utilities.c
+
+messi: messi.c Utilities.o
 	gcc -o messi.o -c messi.c
 
 
@@ -26,10 +31,10 @@ getaddr: GetAddrInfo.c
 
 
 
-server: server.c messi.o TCPServerUtility.o AddressUtility.o DieWithMessage.o GetAddrInfo.o
-	gcc -o server server.c messi.o DieWithMessage.o TCPServerUtility.o AddressUtility.o
+server: server.c Utilities.o messi.o TCPServerUtility.o AddressUtility.o DieWithMessage.o GetAddrInfo.o
+	gcc -o server server.c Utilities.o messi.o DieWithMessage.o TCPServerUtility.o AddressUtility.o
 
 
 .PHONY: clean
 clean:
-	rm -rf *.o server
+	rm -rf *.o server mayus

@@ -10,6 +10,8 @@
 #include <ctype.h>
 #include "messi.h"
 #include <unistd.h>
+#include <signal.h>
+#include "Utilities.h"
 
 static const int MAXPENDING = 5; // Maximum outstanding connection requests
 
@@ -351,6 +353,8 @@ enum parser_state mail_server_read(struct pop3_parser * p,char c, enum parser_st
       return single_line_read(p,c);
     case parsing_multi_line:
       return multi_line_read(p,c);
+    case parsing_retr:
+      return retr_read(p,c);
   }
 
 }
@@ -358,37 +362,32 @@ enum parser_state mail_server_read(struct pop3_parser * p,char c, enum parser_st
 void enum_to_str(int i){
   switch(i){
     case parsing_cmd:
-      printf("PARSING CMD\n");
+      fprintf(stderr,"PARSING CMD\n");
     break;
 
     case parsing_single_line:
-      printf("PARSING SINGLE LINE\n");
+      fprintf(stderr,"PARSING SINGLE LINE\n");
     break;
 
     case parsing_multi_line:
-      printf("PARSING MULTI LINE\n");
+      fprintf(stderr,"PARSING MULTI LINE\n");
     break;
 
     case parsing_retr:
-      printf("PARSING RETR\n");
+      fprintf(stderr,"PARSING RETR\n");
     break;
 
     case parser_error:
-      printf("PARSER ERROR");
+      fprintf(stderr,"PARSER ERROR");
     break;
 
     case exit_parser:
-      printf("EXIT PARSER\n");
-        break;
+      fprintf(stderr,"EXIT PARSER\n");
+      break;
 
   }
 }
 
-void clear_buffer(char * buff){
-  for(int i = 0; i<BUFSIZE;i++){
-    buff[i] = '\0';
-  }
-}
 
 
 void HandleTCPClient(int clntSocket) {
@@ -428,10 +427,15 @@ void HandleTCPClient(int clntSocket) {
     .state = reading,
   };
 
+  struct retr_state_machine rsm = {
+    .state = reading,
+  };
+
   struct pop3_parser p = {
     .sl_sm = slsm,
     .ml_sm = mlsm,
     .cmd_sm = cmsm,
+    .r_sm = rsm,
     .state = parsing_single_line,
     .cmd = "\0\0\0\0\0\0\0\0\0\0",
   };
@@ -450,17 +454,57 @@ void HandleTCPClient(int clntSocket) {
     // enum_to_str(new_state);
 
     bool quit = false;
+    int backupClntSocket = clntSocket;
+          int filterPipe[2];
+      int pi;
+      int pid;
+      pi = pipe(filterPipe);
+      bool child = false;
+      bool hasFilter = false;
 
   while(true){
 
     fprintf(stderr,"1\n");
 
+    if(new_state == parsing_retr ){
+      hasFilter=true;
+      if(!child){
+
+
+      fprintf(stderr,"ACA TENGO QUE APLICAR FILTROS");
+      child = true;
+
+      pid = fork();
+
+      if(pid == 0){
+        //FILTRO
+
+        close(0);
+        dup(filterPipe[0]);
+
+        // close(filterPipe[0]);
+        // close(filterPipe[1]);
+
+
+        close(1);
+        dup(clntSocket);
+        execl("mayus", "mayus" ,(char *) NULL);
+
+      }
+      else{
+        //PROXY
+        //clntSocket = filterPipe[1];
+        //close(filterPipe[1]);
+
+      }
+    }
+    }
 
     while(new_state == initial_state){
-    fprintf(stderr,"2\n");
+      fprintf(stderr,"2\n");
 
       ssize_t numBytesRcvd = recv(mailSock, buffer, BUFSIZE, 0);
-    fprintf(stderr,"3\n");
+      fprintf(stderr,"3\n");
 
       while(i<numBytesRcvd){
 
@@ -468,26 +512,45 @@ void HandleTCPClient(int clntSocket) {
         i++;
       }
 
-          if(quit){
-        break;
-    }
-          fprintf(stderr,buffer,"4\n");
-              fprintf(stderr, "INITIAL STATE: " );
-    enum_to_str(initial_state);
 
-    fprintf(stderr, "NEW STATE: " );
-    enum_to_str(new_state);
 
-      //fprintf(stderr, "BUFFER: %s SIZE: %d\n",buffer,numBytesRcvd );
-      send(clntSocket, buffer, numBytesRcvd, 0);
+      //fprintf(stderr,buffer,"4\n");
+      fprintf(stderr, "INITIAL STATE: " );
+      enum_to_str(initial_state);
+
+      fprintf(stderr, "NEW STATE: " );
+      enum_to_str(new_state);
+
+      //fprintf(stderr, "BUFFER: %s SIZE: %ld\n",buffer,numBytesRcvd );
+      //fprintf(stderr, "CLIENT SOCKET:%d\n", clntSocket);
+      if(hasFilter){
+          write(filterPipe[1],buffer,numBytesRcvd);
+      }
+      else{
+        send(clntSocket,buffer,numBytesRcvd,0);
+      }
+      //send(clntSocket, buffer, numBytesRcvd, 0);
       clear_buffer(buffer);
       i=0;
+
+      if(quit){
+        break;
+      }
     }
 
           fprintf(stderr,"5\n");
 
 
     i = 0;
+    //clntSocket = backupClntSocket;
+    hasFilter = false;
+
+    if(initial_state == parsing_retr){
+      fprintf(stderr, "MATAMOS AL HIJO\n");
+      //sleep(5);
+      //close(filterPipe[1]);
+      fprintf(stderr, "MURIO EL HIJO\n" );
+    }
 
     if(quit){
         break;
@@ -529,6 +592,8 @@ void HandleTCPClient(int clntSocket) {
 
       i = 0;
     }
+
+
         fprintf(stderr,"9\n");
 
         initial_state = new_state;
