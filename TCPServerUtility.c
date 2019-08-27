@@ -416,7 +416,7 @@ void HandleTCPClient(int clntSocket) {
   if (connect(mailSock, (struct sockaddr *) &servAddr, sizeof(servAddr)) < 0)
     DieWithSystemMessage("connect() failed");
 
-    struct single_line_state_machine slsm = {
+  struct single_line_state_machine slsm = {
     .state = reading,
   };
 
@@ -471,7 +471,7 @@ void HandleTCPClient(int clntSocket) {
           if(quit){
         break;
     }
-          fprintf(stderr,"4\n");
+          fprintf(stderr,buffer,"4\n");
               fprintf(stderr, "INITIAL STATE: " );
     enum_to_str(initial_state);
 
